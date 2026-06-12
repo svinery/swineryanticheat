@@ -22,19 +22,25 @@ jobs:
       with:
         dotnet-version: 8.0.x
 
-    - name: WPF Uygulamasını Derle (klasör publish)
+    - name: WPF Uygulamasını Derle (tek dosya exe)
       run: |
         dotnet publish SwineryAntiCheat.WPF/SwineryAntiCheat.WPF.csproj `
-          -c Release -r win-x64 --self-contained true
+          -c Release -r win-x64 --self-contained true `
+          -p:PublishSingleFile=true `
+          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:SatelliteResourceLanguages=en `
+          -p:DebugType=none
 
-    - name: Paketle (publish klasörü + blacklist.txt -> zip)
+    - name: Paketle (exe + blacklist.txt -> zip)
       shell: pwsh
       run: |
         $pub = "SwineryAntiCheat.WPF/bin/Release/net8.0-windows/win-x64/publish"
         # GUI publish blacklist.txt'yi kopyalamaz; pakete elle ekliyoruz.
         Copy-Item "blacklist.txt" "$pub/blacklist.txt" -Force
-        # Tüm publish klasörünü (exe + WPF native/dll'ler + blacklist) zip'le.
-        Compress-Archive -Path "$pub/*" -DestinationPath "SwineryAC-GUI-Windows.zip" -Force
+        # Tek exe + blacklist (temiz paket; native dll'ler exe içinde gömülü).
+        Compress-Archive -Path "$pub/SwineryAC_GUI.exe","$pub/blacklist.txt" `
+          -DestinationPath "SwineryAC-GUI-Windows.zip" -Force
+        Get-ChildItem $pub | Select-Object Name,Length
         Get-Item "SwineryAC-GUI-Windows.zip" | Select-Object Name,Length
 
     # main'e normal push'ta: indirilebilir artifact (etiket yoksa)
