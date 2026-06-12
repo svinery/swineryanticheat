@@ -1,0 +1,18 @@
+# Binaries
+[Bb]in/
+[Oo]bj/
+*.exe
+*.dll
+*.so
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS / IDE
+.vs/
+.vscode/
+*.swp
