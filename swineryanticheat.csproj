@@ -11,6 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WPF alt-projesi ayrı derlenir; konsol projesi onun .cs dosyalarını almasın. -->
+    <Compile Remove="SwineryAntiCheat.WPF\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
