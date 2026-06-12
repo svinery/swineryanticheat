@@ -33,7 +33,7 @@ namespace SwineryAntiCheat.WPF
             ScanProgressBar.Value = 10;
             LogParagraph.Inlines.Clear();
 
-            AppendLog("[*] Swinery Anti-Cheat Başlatıldı...", false);
+            AppendLog("[*] Swinery Anti-Cheat Başlatıldı...");
             
             _cts = new CancellationTokenSource();
             
@@ -45,7 +45,7 @@ namespace SwineryAntiCheat.WPF
             }
             catch (OperationCanceledException)
             {
-                AppendLog("[UYARI] Tarama iptal edildi.", false);
+                AppendLog("[UYARI] Tarama iptal edildi.");
                 TxtStatus.Text = "İptal edildi.";
             }
             finally
@@ -58,77 +58,65 @@ namespace SwineryAntiCheat.WPF
 
         private void RunScanners(CancellationToken token)
         {
-            Action<string, bool> uiCallback = (message, isWarning) => 
-            {
-                AppendLog(message, isWarning);
-            };
-
-            // 2. Try-catch blokları ile modülleri koruma
-            try
-            {
-                token.ThrowIfCancellationRequested();
-                UpdateProgress(30, "Bellek ve Süreçler Taranıyor...");
-                var processScanner = new ProcessScanner();
-                var processFindings = processScanner.RunScan();
-                if (processFindings.Count == 0) uiCallback("[+] Bellek modülleri ve gizli pencereler temiz.", false);
-                else foreach(var f in processFindings) uiCallback(f, true);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception) { uiCallback("[UYARI] Process modülü yetki hatası nedeniyle atlandı.", false); }
+            // Scanner sınıfları çıktıyı Console'a basıyor. Console.Out'u arayüze köprüleyerek
+            // tüm tablo/bilgi/uyarı satırlarını (sadece findings değil) GUI'de gösteriyoruz.
+            TextWriter originalOut = Console.Out;
+            Console.SetOut(new ControlWriter(line => AppendLog(line)));
 
             try
             {
-                token.ThrowIfCancellationRequested();
-                UpdateProgress(50, "Dosya Sistemi Taranıyor...");
-                var fileScanner = new FileScanner();
-                var fileFindings = fileScanner.RunScan();
-                if (fileFindings.Count == 0) uiCallback("[+] Dosya sistemi temiz.", false);
-                else foreach(var f in fileFindings) uiCallback(f, true);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception) { uiCallback("[UYARI] File modülü yetki hatası nedeniyle atlandı.", false); }
+                RunModule(token, 30, "Bellek ve Süreçler Taranıyor...", () => new ProcessScanner().RunScan(), "Process");
+                RunModule(token, 50, "Dosya Sistemi Taranıyor...", () => new FileScanner().RunScan(), "File");
+                RunModule(token, 70, "Kernel Sürücüleri Taranıyor...", () => new DriverScanner().RunScan(), "Driver");
+                RunModule(token, 90, "Ağ Bağlantıları Kontrol Ediliyor...", () => new NetworkScanner().RunScan(), "Network");
 
-            try
+                token.ThrowIfCancellationRequested();
+                UpdateProgress(100, "Rapor Oluşturuluyor...");
+                AppendLog("[*] Tarama işlemleri sonlandırıldı.");
+            }
+            finally
             {
-                token.ThrowIfCancellationRequested();
-                UpdateProgress(70, "Kernel Sürücüleri Taranıyor...");
-                var driverScanner = new DriverScanner();
-                var driverFindings = driverScanner.RunScan();
-                if (driverFindings.Count == 0) uiCallback("[+] Kernel sürücüleri temiz.", false);
-                else foreach(var f in driverFindings) uiCallback(f, true);
+                // Console.Out'u her durumda eski haline döndür.
+                Console.SetOut(originalOut);
             }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception) { uiCallback("[UYARI] Driver modülü yetki hatası nedeniyle atlandı.", false); }
-
-            try
-            {
-                token.ThrowIfCancellationRequested();
-                UpdateProgress(90, "Ağ Bağlantıları Kontrol Ediliyor...");
-                var networkScanner = new NetworkScanner();
-                var netFindings = networkScanner.RunScan();
-                if (netFindings.Count == 0) uiCallback("[+] Şüpheli ağ bağlantısı yok.", false);
-                else foreach(var f in netFindings) uiCallback(f, true);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception) { uiCallback("[UYARI] Network modülü yetki hatası nedeniyle atlandı.", false); }
-
-            token.ThrowIfCancellationRequested();
-            UpdateProgress(100, "Rapor Oluşturuluyor...");
-            uiCallback("[*] Tarama işlemleri sonlandırıldı.", false);
         }
 
-        private void AppendLog(string message, bool isWarning)
+        // Tek bir tarama modülünü çalıştırır; iptal'i yukarı taşır, diğer hataları izole eder.
+        private void RunModule(CancellationToken token, int progress, string status,
+                               Func<List<string>> scan, string moduleName)
+        {
+            try
+            {
+                token.ThrowIfCancellationRequested();
+                UpdateProgress(progress, status);
+                scan(); // Çıktı Console köprüsü üzerinden zaten UI'a akıyor.
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception)
+            {
+                AppendLog($"[UYARI] {moduleName} modülü yetki hatası nedeniyle atlandı.");
+            }
+        }
+
+        private void AppendLog(string message)
         {
             Dispatcher.Invoke(() =>
             {
-                SolidColorBrush color = isWarning ? Brushes.Red : Brushes.LimeGreen;
-                if (message.Contains("[*]")) color = Brushes.Cyan;
-                if (message.Contains("[UYARI]")) color = Brushes.Gray; // Gri renk yetki/iptal uyarıları için
-
-                Run run = new Run(message + "\n") { Foreground = color };
+                Run run = new Run(message + "\n") { Foreground = ResolveColor(message) };
                 LogParagraph.Inlines.Add(run);
                 RtbLogs.ScrollToEnd();
             });
+        }
+
+        // Satır önekine göre renk seçer (Console'daki ForegroundColor mantığının karşılığı).
+        private static SolidColorBrush ResolveColor(string message)
+        {
+            if (message.Contains("[!]")) return Brushes.Red;          // Şüpheli bulgu
+            if (message.Contains("[+]")) return Brushes.LimeGreen;    // Temiz / başarılı
+            if (message.Contains("[Hata]")) return Brushes.OrangeRed; // Okuma/erişim hatası
+            if (message.Contains("[UYARI]")) return Brushes.Gray;     // Yetki/iptal uyarısı
+            if (message.Contains("[*]") || message.Contains("[Bilgi]")) return Brushes.Cyan;
+            return Brushes.Gainsboro;                                  // Tablo satırları / nötr
         }
 
         private void UpdateProgress(int value, string status)
