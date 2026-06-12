@@ -1,0 +1,30 @@
+name: Build WPF Application
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Manuel tetikleme butonu ekler
+
+jobs:
+  build-windows:
+    runs-on: windows-latest # Derlemeyi GitHub'ın Windows sunucularında yapar
+
+    steps:
+    - name: Kodu İndir
+      uses: actions/checkout@v4
+
+    - name: .NET 8 Kurulumu
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: WPF Uygulamasını Derle (.exe oluştur)
+      run: |
+        cd SwineryAntiCheat.WPF
+        dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
+    - name: Oluşan EXE'yi GitHub'a Yükle
+      uses: actions/upload-artifact@v4
+      with:
+        name: SwineryAC-WPF-Windows
+        path: SwineryAntiCheat.WPF/bin/Release/net8.0/win-x64/publish/SwineryAC_GUI.exe
