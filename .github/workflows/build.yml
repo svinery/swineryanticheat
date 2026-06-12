@@ -27,4 +27,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: SwineryAC-WPF-Windows
-        path: SwineryAntiCheat.WPF/bin/Release/net8.0/win-x64/publish/SwineryAC_GUI.exe
+        path: SwineryAntiCheat.WPF/bin/Release/net8.0/win-x64/publish/
