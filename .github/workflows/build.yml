@@ -59,6 +59,12 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       shell: pwsh
       run: |
-        gh release create "${{ github.ref_name }}" "SwineryAC-GUI-Windows.zip" `
-          --title "SwineryAC ${{ github.ref_name }}" `
-          --notes "Windows WPF arayuz surumu. 3 katmanli hile tespiti: isim entropisi + SHA256 + imphash. Zip icinde SwineryAC_GUI.exe + blacklist.txt. Admin ile calistirin."
+        $tag = "${{ github.ref_name }}"
+        $zip = "SwineryAC-GUI-Windows.zip"
+        $notes = "Windows WPF arayuz surumu. 3 katmanli hile tespiti: isim entropisi + SHA256 + imphash. Zip icinde SwineryAC_GUI.exe + blacklist.txt. Admin ile calistirin."
+        # Release yoksa olustur; varsa asset'i ezerek yukle (yeniden tetiklemede patlamaz).
+        gh release create "$tag" "$zip" --title "SwineryAC $tag" --notes "$notes"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Release zaten var, asset guncelleniyor..."
+            gh release upload "$tag" "$zip" --clobber
+        }
