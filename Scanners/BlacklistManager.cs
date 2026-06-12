@@ -13,6 +13,10 @@ namespace SwineryAntiCheat.Scanners
         // Bilinen-kötü dosya içerik hash'leri (SHA256). Dosya adı değişse de içerik aynıysa yakalanır.
         public static HashSet<string> KnownBadHashes { get; private set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Bilinen-kötü imphash'ler (PE import tablosu MD5'i). İçerik repack edilse de import sırası
+        // korunduğundan polimorf varyantları yakalar.
+        public static HashSet<string> KnownBadImphashes { get; private set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         public static void LoadBlacklist()
         {
             string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "blacklist.txt");
@@ -58,12 +62,15 @@ namespace SwineryAntiCheat.Scanners
                             // Boşluk/ayraç temizle; karşılaştırma OrdinalIgnoreCase olduğu için büyük/küçük fark etmez.
                             KnownBadHashes.Add(trimmed.Replace(" ", "").Replace(":", ""));
                             break;
+                        case "[IMPHASHES]":
+                            KnownBadImphashes.Add(trimmed.Replace(" ", "").Replace(":", ""));
+                            break;
                     }
                 }
                 
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine($"[+] Kara liste (blacklist.txt) başarıyla yüklendi!");
-                Console.WriteLine($"    -> {ProcessAndFileKeywords.Count} Dosya/Süreç, {DnsDomains.Count} Domain, {VulnerableDrivers.Count} Sürücü (BYOVD), {KnownBadHashes.Count} Hash kuralı aktif.\n");
+                Console.WriteLine($"    -> {ProcessAndFileKeywords.Count} Dosya/Süreç, {DnsDomains.Count} Domain, {VulnerableDrivers.Count} Sürücü (BYOVD), {KnownBadHashes.Count} Hash, {KnownBadImphashes.Count} Imphash kuralı aktif.\n");
                 Console.ResetColor();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

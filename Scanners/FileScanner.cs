@@ -343,6 +343,20 @@ namespace SwineryAntiCheat.Scanners
                     return;
                 }
 
+                // KATMAN 3: imphash — içerik repack edilip SHA256 değişse bile import tablosu aynıysa yakalar.
+                if (BlacklistManager.KnownBadImphashes.Count > 0)
+                {
+                    string? imphash = PeImportHash.TryCompute(file);
+                    if (imphash != null && BlacklistManager.KnownBadImphashes.Contains(imphash))
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"[!] BİLİNEN ZARARLI IMPHASH (polimorf varyant): {fileName} | Imphash: {imphash}");
+                        Console.ResetColor();
+                        findings.Add($"[IMPHASH] Bilinen zararlı import tablosu: {fileName} | Yol: {file} | Imphash: {imphash} | SHA256: {hash}");
+                        return;
+                    }
+                }
+
                 // Hash listede yok ama adı rastgele görünüyorsa: ad+konum birleşimi şüphe yaratır.
                 string nameNoExt = Path.GetFileNameWithoutExtension(fileName);
                 if (NameHeuristics.IsLikelyRandom(nameNoExt, out string reason))

@@ -283,3 +283,9 @@ WinIo64.sys
 # Format: tek satirda SHA256 (bosluk/`:` otomatik temizlenir, buyuk/kucuk farketmez).
 # ornek (yer tutucu - gercek hash ekleyin):
 # e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+[IMPHASHES]
+# Bilinen zararli PE import tablosu MD5 ozetleri (imphash).
+# SHA256 degisse de (repack/crypter) import sirasi korunursa imphash sabit kalir.
+# pefile.get_imphash() ile uretilebilir. ornek (yer tutucu):
+# d41d8cd98f00b204e9800998ecf8427e
