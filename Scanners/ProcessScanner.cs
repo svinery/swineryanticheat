@@ -153,7 +153,7 @@ namespace SwineryAntiCheat.Scanners
                     }
                 }
             }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.IO.IOException)
             {
                 // Erişim reddi / yarışta sonlanan süreç: bu PID'i atla, taramaya devam et.
             }

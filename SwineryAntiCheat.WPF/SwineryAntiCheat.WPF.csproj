@@ -16,7 +16,6 @@
   <ItemGroup>
     <!-- Mevcut tarama sınıflarını (Core kodları) referans olarak gösteriyoruz -->
     <Compile Include="..\Scanners\*.cs" Link="Scanners\%(Filename)%(Extension)" />
-    <Compile Include="..\Program.cs" Link="Core\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

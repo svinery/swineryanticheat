@@ -10,7 +10,7 @@ namespace SwineryAntiCheat.WPF
 {
     public partial class MainWindow : Window
     {
-        private CancellationTokenSource _cts;
+        private CancellationTokenSource? _cts;
 
         public MainWindow()
         {
