@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using Microsoft.Win32;
 
 namespace SwineryAntiCheat.Scanners
@@ -248,6 +249,116 @@ namespace SwineryAntiCheat.Scanners
             return new string(array);
         }
 
+        // --- KATMAN 2: İçerik (hash) tabanlı tespit ---
+        // Dosya adı her indirmede değişse bile içerik aynıysa SHA256 sabit kalır.
+
+        // Dosyanın SHA256'sını AKIŞ halinde hesaplar; tüm dosyayı belleğe almaz (büyük .exe'lerde önemli).
+        private string ComputeSha256(string path)
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            byte[] hash = SHA256.HashData(stream); // .NET 8: stream'i parça parça okur
+            return Convert.ToHexString(hash);      // büyük harf hex; karşılaştırma OrdinalIgnoreCase
+        }
+
+        // Hilelerin sıkça düştüğü dizinler (indirme/geçici/çalıştırma konumları), platforma göre.
+        private IEnumerable<string> GetDirectoriesToHashScan()
+        {
+            var dirs = new List<string>();
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            if (!string.IsNullOrEmpty(home))
+            {
+                dirs.Add(Path.Combine(home, "Downloads"));
+                dirs.Add(Path.Combine(home, "Desktop"));
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                dirs.Add(Path.GetTempPath()); // %LOCALAPPDATA%\Temp
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (!string.IsNullOrEmpty(appData)) dirs.Add(appData);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                dirs.Add("/tmp");
+                dirs.Add("/dev/shm");
+            }
+
+            return dirs.Where(Directory.Exists).Distinct();
+        }
+
+        // Bir çalıştırılabilir mi? (Win: .exe/.dll/.scr | Linux: .so/.ko/.elf veya uzantısız ELF olabilir)
+        private bool IsExecutableCandidate(string path)
+        {
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext is ".exe" or ".dll" or ".scr" or ".so" or ".ko" or ".elf" or ".bin";
+        }
+
+        // Şüpheli dizinlerdeki çalıştırılabilirleri hash'ler; bilinen-kötü hash veya rastgele ad ile işaretler.
+        public List<string> ScanSuspiciousDirectories()
+        {
+            var findings = new List<string>();
+            const long maxFileSizeBytes = 150 * 1024 * 1024; // 150MB üstünü atla (performans)
+
+            foreach (var dir in GetDirectoriesToHashScan())
+            {
+                IEnumerable<string> files;
+                try
+                {
+                    // Sadece üst seviye; alt dizinlerde kaybolmamak ve izin hatalarını sınırlamak için.
+                    files = Directory.EnumerateFiles(dir, "*", SearchOption.TopDirectoryOnly);
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                {
+                    continue; // dizin okunamadı, atla
+                }
+
+                foreach (var file in files)
+                {
+                    if (!IsExecutableCandidate(file)) continue;
+                    InspectFileByHash(file, maxFileSizeBytes, findings);
+                }
+            }
+
+            return findings;
+        }
+
+        // Tek bir dosyayı hash + ad sezgisiyle inceler. Okunamayan dosyalar atlanır (çökme yok).
+        private void InspectFileByHash(string file, long maxFileSizeBytes, List<string> findings)
+        {
+            try
+            {
+                var info = new FileInfo(file);
+                if (info.Length == 0 || info.Length > maxFileSizeBytes) return;
+
+                string hash = ComputeSha256(file);
+                string fileName = Path.GetFileName(file);
+
+                if (BlacklistManager.KnownBadHashes.Contains(hash))
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"[!] BİLİNEN ZARARLI HASH: {fileName} | SHA256: {hash}");
+                    Console.ResetColor();
+                    findings.Add($"[HASH] Bilinen zararlı dosya: {fileName} | Yol: {file} | SHA256: {hash}");
+                    return;
+                }
+
+                // Hash listede yok ama adı rastgele görünüyorsa: ad+konum birleşimi şüphe yaratır.
+                string nameNoExt = Path.GetFileNameWithoutExtension(fileName);
+                if (NameHeuristics.IsLikelyRandom(nameNoExt, out string reason))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"[!] RASTGELE ADLI ÇALIŞTIRILABİLİR: {fileName} | SHA256: {hash}");
+                    Console.ResetColor();
+                    findings.Add($"[HASH+RASTGELE İSİM] {fileName} | Yol: {file} | SHA256: {hash} | Sinyaller: {reason}");
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                // Kilitli / izin yok / yarışta silinmiş: bu dosyayı atla, taramaya devam et.
+            }
+        }
+
         public List<string> RunScan()
         {
             var findings = new List<string>();
@@ -296,12 +407,41 @@ namespace SwineryAntiCheat.Scanners
                     Console.WriteLine($"[!] {timeStr,-18} | {record.ExecutableName,-30} | {record.Source}");
                     Console.ResetColor();
                     findings.Add($"[DOSYA] Tarih: {timeStr,-19} | Dosya: {record.ExecutableName,-25} | Kaynak: {record.Source}");
+                    continue;
+                }
+
+                // Kara listeye takılmadıysa: ismin rastgele üretilmiş gibi görünüp görünmediğini denetle.
+                // (afa8fy92988q9ahag.exe gibi her indirmede değişen isimleri yakalamak için.)
+                // Boşluk içerenler komut satırıdır (örn. bash_history), dosya adı değil → heuristik uygulanmaz.
+                string nameNoExt = Path.GetFileNameWithoutExtension(record.ExecutableName);
+                bool looksLikeFileName = !record.ExecutableName.Contains(' ');
+                if (looksLikeFileName && NameHeuristics.IsLikelyRandom(nameNoExt, out string reason))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"[!] {timeStr,-18} | {record.ExecutableName,-30} | {record.Source} (RASTGELE İSİM)");
+                    Console.ResetColor();
+                    findings.Add($"[DOSYA-RASTGELE İSİM] Tarih: {timeStr,-19} | Dosya: {record.ExecutableName,-25} | Kaynak: {record.Source} | Sinyaller: {reason}");
                 }
                 else
                 {
                     Console.WriteLine($"    {timeStr,-18} | {record.ExecutableName,-30} | {record.Source}");
                 }
             }
+
+            // KATMAN 2: indirme/geçici dizinlerdeki dosyaları içerik hash'iyle tara (ad değişse de yakala).
+            Console.WriteLine("\n[*] İndirme/geçici dizinler içerik hash'i (SHA256) ile taranıyor...");
+            var hashFindings = ScanSuspiciousDirectories();
+            if (hashFindings.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[+] Hash taraması temiz. Bilinen zararlı içerik veya rastgele adlı çalıştırılabilir bulunamadı.");
+                Console.ResetColor();
+            }
+            else
+            {
+                findings.AddRange(hashFindings);
+            }
+
             return findings;
         }
     }
