@@ -81,7 +81,7 @@ namespace SwineryAntiCheat
 
                 // Rapor Dosyasını Oluşturma
                 string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                string reportPath = System.IO.Path.Combine(desktopPath, "TW_Tarama_Raporu.txt");
+                string reportPath = System.IO.Path.Combine(desktopPath, "SwineryAC_Tarama_Raporu.txt");
                 
                 using (System.IO.StreamWriter writer = new System.IO.StreamWriter(reportPath))
                 {
