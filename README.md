@@ -40,3 +40,4 @@ Bu yazılım tamamen sunucu güvenliği ve sistem yönetimi amacıyla geliştiri
 
 ---
 *Geliştirici: **swinery***
+*Discord : zswi
